@@ -48,9 +48,8 @@ def load_image_to_work_queue(image_path):
     for y in range(img_height):
         for x in range(img_width):
             r, g, b = image.getpixel((x, y))
-            if (r, g, b) != (0, 0, 0):  # Ignoriere schwarze Pixel
-                color = f'{r:02x}{g:02x}{b:02x}'
-                pixels.append((start_x + x, start_y + y, color))
+            color = f'{r:02x}{g:02x}{b:02x}'
+            pixels.append((start_x + x, start_y + y, color))
 
     # Teile Pixel in Pakete der Größe `packet_size`
     work_packets = [pixels[i:i + packet_size] for i in range(0, len(pixels), packet_size)]
