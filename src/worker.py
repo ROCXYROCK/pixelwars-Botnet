@@ -67,8 +67,16 @@ def connect_to_master():
                         last_check = time.time()
                         print(f"Updated delay to {delay:.3f} seconds based on new PPS.")
 
-                    # Receive a work packet from master
-                    data = s.recv(4096).decode()
+                    # Receive data in chunks and assemble it
+                    data = ""
+                    while True:
+                        chunk = s.recv(1024).decode()
+                        if not chunk:
+                            break
+                        data += chunk
+                        if len(chunk) < 1024:  # Break if no more data is expected
+                            break
+
                     if not data:
                         print("No data received, disconnecting...")
                         break
