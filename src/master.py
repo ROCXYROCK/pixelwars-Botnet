@@ -66,11 +66,11 @@ def handle_worker(conn, addr):
             work_packet = work_queue.get_nowait()
 
             # Sende das Arbeitspaket an den Worker
-            conn.sendall(json.dumps(work_packet).encode())
+            conn.sendall(json.dumps(work_packet).encode("utf-8"))
             print(f"Sent work packet to {addr}")
 
             # Warte auf die ACK-Nachricht des Workers
-            response = conn.recv(1024).decode()
+            response = conn.recv(1024).decode("utf-8")
             if response == "acknowledge":
                 print(f"Worker {addr} acknowledged receipt.")
                 work_queue.task_done()
