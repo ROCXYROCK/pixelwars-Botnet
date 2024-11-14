@@ -19,7 +19,7 @@ MASTER_PORT = config["Src"]["PORT"]
 # API base URL
 BASE_URL = f"{DIST_HOST}{DIST_PORT}" if DIST_PORT else DIST_HOST
 
-# Argumentparser für CLI-Eingaben, um Master-Adresse und -Port zu überschreiben
+# Argumentparser für CLI-Eingaben
 parser = argparse.ArgumentParser(description="Worker to process pixels from master.")
 parser.add_argument("--master_host", type=str, default=MASTER_HOST, help="Master server host address.")
 parser.add_argument("--master_port", type=int, default=MASTER_PORT, help="Master server port.")
@@ -31,27 +31,9 @@ def set_pixel(x, y, color):
     response = requests.put(f"{BASE_URL}{SET_ENDPOINT}", params=params, headers={'accept': 'application/json'})
     return response.status_code == 201
 
-# Get the current pixels per second (PPS) rate limit
-def get_pps():
-    try:
-        response = requests.get(f"{BASE_URL}{PPS_ENDPOINT}", headers={'accept': 'application/json'})
-        if response.status_code == 200:
-            pps = float(response.json())
-            print(f"PPS rate limit obtained: {pps}")
-            return pps
-        else:
-            print(f"Failed to get PPS rate limit. Status code: {response.status_code}")
-            return 1  # Default PPS if request fails
-    except Exception as e:
-        print(f"Error obtaining PPS: {e}")
-        return 1
-
 # Connect to the Master and request work packets
 def connect_to_master():
-    # Initial PPS and delay
-    pps = get_pps()
-    delay = 1 / pps if pps > 0 else 1
-    last_check = time.time()
+    delay = 1 / 5  # Fester PPS-Delay
 
     while True:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -60,39 +42,37 @@ def connect_to_master():
                 print("Connected to master, requesting work...")
 
                 while True:
-                    # Check every 10 seconds to update PPS and delay
-                    if time.time() - last_check >= 10:
-                        pps = get_pps()
-                        delay = 1 / pps if pps > 0 else 1
-                        last_check = time.time()
-                        print(f"Updated delay to {delay:.3f} seconds based on new PPS.")
-
-                    # Receive data in chunks and assemble it
+                    # Empfange Daten und verarbeite JSON mit Fehlerbehandlung
                     data = ""
                     while True:
                         chunk = s.recv(1024).decode()
                         if not chunk:
                             break
                         data += chunk
-                        if len(chunk) < 1024:  # Break if no more data is expected
+                        if len(chunk) < 1024:
                             break
 
                     if not data:
                         print("No data received, disconnecting...")
                         break
 
-                    work_packet = json.loads(data)
+                    try:
+                        work_packet = json.loads(data)
+                    except json.JSONDecodeError:
+                        print("JSON decode error, requesting packet again...")
+                        continue
+
                     print(f"Received work packet with {len(work_packet)} pixels.")
 
-                    # Process each pixel in the work packet
+                    # Verarbeite jedes Pixel im Arbeitspaket
                     for x, y, color in work_packet:
                         if not set_pixel(x, y, color):
                             print(f"Failed to set pixel at ({x}, {y}) with color {color}")
-                        time.sleep(delay)  # Wait according to the current delay
+                        time.sleep(delay)
 
-                    # Notify master that this packet is complete
-                    s.sendall("done".encode())
-                    print("Work packet completed and reported to master.")
+                    # Sende ACK-Nachricht an den Master
+                    s.sendall("acknowledge".encode())
+                    print("Work packet completed and acknowledged to master.")
 
             except ConnectionRefusedError:
                 print("Master not available, retrying in 5 seconds...")
