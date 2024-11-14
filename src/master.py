@@ -7,6 +7,11 @@ from PIL import Image
 from queue import Queue
 import toml
 import argparse
+from icecream import ic
+from datetime import datetime
+
+# Icecream mit Zeitstempel konfigurieren
+ic.configureOutput(prefix=lambda: f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | ")
 
 # Lade Konfiguration aus config.toml
 config = toml.load("cfg/config.toml")
@@ -37,10 +42,10 @@ def format_color(r, g, b):
     else:
         # Generiere eine zufällige Farbe im Hex-Format
         random_color = f'{random.randint(0, 255):02x}{random.randint(0, 255):02x}{random.randint(0, 255):02x}'
-        print(f"Invalid color values detected: ({r}, {g}, {b}). Using random color '{random_color}'.")
+        ic(f"Invalid color values detected: ({r}, {g}, {b}). Using random color '{random_color}'.")
         return random_color
 
-# Lade das Bild und erstelle Arbeitspakete basierend auf festem PPS-Wert
+# Lade das Bild und erstelle Arbeitspakete für Progressive Rendering
 def load_image_to_work_queue(image_path):
     image = Image.open(image_path).convert('RGB')
     img_width, img_height = image.size
@@ -48,30 +53,31 @@ def load_image_to_work_queue(image_path):
     # Berechne eine zufällige Startposition
     start_x = random.randint(0, CANVAS_WIDTH - img_width)
     start_y = random.randint(0, CANVAS_HEIGHT - img_height)
-    print(f"Starting position on canvas: (x={start_x}, y={start_y})")
+    ic(f"Starting position on canvas: (x={start_x}, y={start_y})")
 
     # Paketgröße berechnen basierend auf festem PPS-Wert
     packet_size = int(40 * PPS)
-    print(f"Packet size calculated based on fixed PPS: {packet_size}")
+    ic(f"Packet size calculated based on fixed PPS: {packet_size}")
 
-    # Erstelle Pixel-Daten mit angepassten Koordinaten und validiertem Farbformat
-    pixels = []
-    for y in range(img_height):
-        for x in range(img_width):
-            r, g, b = image.getpixel((x, y))
-            color = format_color(r, g, b)
-            pixels.append((start_x + x, start_y + y, color))
+    # Progressive Rendering in mehreren Schritten
+    for step in range(3, 0, -1):  # Schrittweite reduzieren: 3, 2, 1
+        pixels = []
+        for y in range(0, img_height, step):  # Schrittweise Abstände
+            for x in range(0, img_width, step):
+                r, g, b = image.getpixel((x, y))
+                color = format_color(r, g, b)
+                pixels.append((start_x + x, start_y + y, color))
 
-    # Teile Pixel in Pakete der Größe `packet_size`
-    work_packets = [pixels[i:i + packet_size] for i in range(0, len(pixels), packet_size)]
-    for packet in work_packets:
-        work_queue.put(packet)
+        # Teile Pixel in Pakete der Größe `packet_size`
+        work_packets = [pixels[i:i + packet_size] for i in range(0, len(pixels), packet_size)]
+        for packet in work_packets:
+            work_queue.put(packet)
 
-    print(f"Loaded {len(pixels)} pixels into {work_queue.qsize()} work packets.")
+        ic(f"Loaded {len(pixels)} pixels into {work_queue.qsize()} work packets for step {step}.")
 
 # Arbeiterverbindungen bearbeiten
 def handle_worker(conn, addr):
-    print(f"Worker connected from {addr}")
+    ic(f"Worker connected from {addr}")
 
     while not work_queue.empty():
         try:
@@ -80,35 +86,35 @@ def handle_worker(conn, addr):
 
             # Sende das Arbeitspaket an den Worker
             conn.sendall(json.dumps(work_packet).encode())
-            print(f"Sent work packet to {addr}")
+            ic(f"Sent work packet to {addr}")
 
             # Warte auf das 'ack' Signal vom Worker
             ack = conn.recv(1024).decode()
             if ack != "ack":
-                print(f"Did not receive acknowledgment from {addr}, re-sending packet.")
+                ic(f"Did not receive acknowledgment from {addr}, re-sending packet.")
                 work_queue.put(work_packet)  # Packet back to queue
                 continue
 
             # Warte auf die 'done' Nachricht des Workers
             response = conn.recv(1024).decode()
             if response == "done":
-                print(f"Worker {addr} finished a packet.")
+                ic(f"Worker {addr} finished a packet.")
                 work_queue.task_done()
             else:
-                print(f"Unexpected response from {addr}: {response}")
+                ic(f"Unexpected response from {addr}: {response}")
                 work_queue.put(work_packet)  # Packet back to queue if error occurs
 
             if work_queue.empty():
-                print(f"No more work packets for {addr}")
+                ic(f"No more work packets for {addr}")
                 break
 
         except Exception as e:
-            print(f"Error handling worker {addr}: {e}")
+            ic(f"Error handling worker {addr}: {e}")
             work_queue.put(work_packet)  # Packet back to queue on exception
             continue
 
     conn.close()
-    print(f"Worker {addr} disconnected")
+    ic(f"Worker {addr} disconnected")
 
 # Starte den Master-Server
 def start_master(image_path):
@@ -118,7 +124,7 @@ def start_master(image_path):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((SRC_HOST, SRC_PORT))
     server.listen(5)
-    print(f"Master server listening on {SRC_HOST}:{SRC_PORT}")
+    ic(f"Master server listening on {SRC_HOST}:{SRC_PORT}")
 
     # Akzeptiere Worker-Verbindungen
     while not work_queue.empty():
@@ -127,7 +133,7 @@ def start_master(image_path):
         worker_thread.start()
 
     server.close()
-    print("All work packets processed.")
+    ic("All work packets processed.")
 
 # Starte den Master mit dem übergebenen Bildpfad
 start_master(args.image_path)
