@@ -1,0 +1,15 @@
+[Dist]
+HOST = "https://pixels.security-day.hs-offenburg.de"
+PORT = ""
+
+pps = "/canvas/pps"
+set = "/canvas/pixel"
+
+[Src]
+HOST = "87.106.39.179"
+PORT = 5555
+
+[Files]
+
+dir = "/pics"
+progress = "/data/progress.json"

@@ -1,0 +1,16 @@
+# Basis-Image
+FROM python:3.9-slim
+
+# Arbeitsverzeichnis erstellen
+WORKDIR /app
+
+# Abhängigkeiten und Skripte kopieren
+COPY src/master.py /app/src/master.py
+COPY cfg/config.toml /app/cfg/config.toml
+COPY pics /app/pics
+
+# Abhängigkeiten installieren
+RUN pip install requests pillow toml
+
+# Master-Server starten
+CMD ["python", "/src/master.py", "/app/pics/image1.png"]
