@@ -2,6 +2,7 @@ import socket
 import threading
 import json
 import random
+import os
 from PIL import Image
 from queue import Queue
 import toml
@@ -13,6 +14,7 @@ config = toml.load("cfg/config.toml")
 # Konfigurationseinstellungen aus der TOML-Datei
 SRC_HOST = "0.0.0.0"
 SRC_PORT = config["Src"]["PORT"]
+FILES_DIR = config["Files"]["dir"]
 
 # Statische Werte für Canvas-Größe und PPS
 CANVAS_WIDTH = 1920
@@ -27,7 +29,7 @@ parser = argparse.ArgumentParser(description="Image processing master server.")
 parser.add_argument("image_path", type=str, help="Path to the image file to process.")
 args = parser.parse_args()
 
-# Lade das Bild und erstelle Arbeitspakete
+# Lade das Bild und erstelle Arbeitspakete basierend auf festem PPS-Wert
 def load_image_to_work_queue(image_path):
     image = Image.open(image_path).convert('RGB')
     img_width, img_height = image.size
@@ -37,7 +39,7 @@ def load_image_to_work_queue(image_path):
     start_y = random.randint(0, CANVAS_HEIGHT - img_height)
     print(f"Starting position on canvas: (x={start_x}, y={start_y})")
 
-    # Paketgröße basierend auf festem PPS-Wert berechnen
+    # Paketgröße berechnen basierend auf festem PPS-Wert
     packet_size = int(40 * PPS)
     print(f"Packet size calculated based on fixed PPS: {packet_size}")
 
@@ -66,28 +68,40 @@ def handle_worker(conn, addr):
             work_packet = work_queue.get_nowait()
 
             # Sende das Arbeitspaket an den Worker
-            conn.sendall(json.dumps(work_packet).encode("utf-8"))
+            conn.sendall(json.dumps(work_packet).encode())
             print(f"Sent work packet to {addr}")
 
-            # Warte auf die ACK-Nachricht des Workers
-            response = conn.recv(1024).decode("utf-8")
-            if response == "acknowledge":
-                print(f"Worker {addr} acknowledged receipt.")
+            # Warte auf das 'ack' Signal vom Worker
+            ack = conn.recv(1024).decode()
+            if ack != "ack":
+                print(f"Did not receive acknowledgment from {addr}, re-sending packet.")
+                work_queue.put(work_packet)  # Packet back to queue
+                continue
+
+            # Warte auf die 'done' Nachricht des Workers
+            response = conn.recv(1024).decode()
+            if response == "done":
+                print(f"Worker {addr} finished a packet.")
                 work_queue.task_done()
             else:
-                # Wenn keine Bestätigung, Paket zurück in die Queue
-                print(f"Unexpected response from {addr}. Re-queueing packet.")
-                work_queue.put(work_packet)
+                print(f"Unexpected response from {addr}: {response}")
+                work_queue.put(work_packet)  # Packet back to queue if error occurs
+
+            if work_queue.empty():
+                print(f"No more work packets for {addr}")
+                break
 
         except Exception as e:
             print(f"Error handling worker {addr}: {e}")
-            break
+            work_queue.put(work_packet)  # Packet back to queue on exception
+            continue
 
     conn.close()
     print(f"Worker {addr} disconnected")
 
 # Starte den Master-Server
 def start_master(image_path):
+    # Initialisiere Arbeitspakete für das angegebene Bild
     load_image_to_work_queue(image_path)
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

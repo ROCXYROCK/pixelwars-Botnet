@@ -19,21 +19,45 @@ MASTER_PORT = config["Src"]["PORT"]
 # API base URL
 BASE_URL = f"{DIST_HOST}{DIST_PORT}" if DIST_PORT else DIST_HOST
 
-# Argumentparser für CLI-Eingaben
+# Argumentparser für CLI-Eingaben, um Master-Adresse und -Port zu überschreiben
 parser = argparse.ArgumentParser(description="Worker to process pixels from master.")
 parser.add_argument("--master_host", type=str, default=MASTER_HOST, help="Master server host address.")
 parser.add_argument("--master_port", type=int, default=MASTER_PORT, help="Master server port.")
 args = parser.parse_args()
 
-# Set a pixel on the canvas
-def set_pixel(x, y, color):
+# Set a pixel on the canvas with retry handling for connectivity issues
+def set_pixel(x, y, color, retries=3):
     params = {'x': x, 'y': y, 'color': color}
-    response = requests.put(f"{BASE_URL}{SET_ENDPOINT}", params=params, headers={'accept': 'application/json'})
-    return response.status_code == 201
+    for attempt in range(retries):
+        response = requests.put(f"{BASE_URL}{SET_ENDPOINT}", params=params, headers={'accept': 'application/json'})
+        if response.status_code == 201:
+            return True
+        else:
+            print(f"Failed to set pixel at ({x}, {y}) with color {color}. Attempt {attempt + 1} of {retries}. Status code: {response.status_code}")
+            time.sleep(0.5)  # Short delay before retry
+    return False  # Skip pixel after retries
+
+# Get the current pixels per second (PPS) rate limit
+def get_pps():
+    try:
+        response = requests.get(f"{BASE_URL}{PPS_ENDPOINT}", headers={'accept': 'application/json'})
+        if response.status_code == 200:
+            pps = float(response.json())
+            print(f"PPS rate limit obtained: {pps}")
+            return pps
+        else:
+            print(f"Failed to get PPS rate limit. Status code: {response.status_code}")
+            return 1  # Default PPS if request fails
+    except Exception as e:
+        print(f"Error obtaining PPS: {e}")
+        return 1
 
 # Connect to the Master and request work packets
 def connect_to_master():
-    delay = 1 / 5  # Fester PPS-Delay
+    # Initial PPS and delay
+    pps = get_pps()
+    delay = 1 / pps if pps > 0 else 1
+    last_check = time.time()
 
     while True:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -42,14 +66,21 @@ def connect_to_master():
                 print("Connected to master, requesting work...")
 
                 while True:
-                    # Empfange Daten und verarbeite JSON mit Fehlerbehandlung
+                    # Check every 10 seconds to update PPS and delay
+                    if time.time() - last_check >= 10:
+                        pps = get_pps()
+                        delay = 1 / pps if pps > 0 else 1
+                        last_check = time.time()
+                        print(f"Updated delay to {delay:.3f} seconds based on new PPS.")
+
+                    # Receive data in chunks and assemble it
                     data = ""
                     while True:
-                        chunk = s.recv(1024).decode("utf-8")
+                        chunk = s.recv(1024).decode()
                         if not chunk:
                             break
                         data += chunk
-                        if len(chunk) < 1024:
+                        if len(chunk) < 1024:  # Break if no more data is expected
                             break
 
                     if not data:
@@ -58,21 +89,24 @@ def connect_to_master():
 
                     try:
                         work_packet = json.loads(data)
+                        print(f"Received work packet with {len(work_packet)} pixels.")
                     except json.JSONDecodeError:
-                        print("JSON decode error, requesting packet again...")
-                        continue
+                        print("Received invalid JSON data, requesting packet again...")
+                        continue  # Retry requesting packet
+                    
+                    # Send acknowledgment for received packet
+                    s.sendall("ack".encode())
+                    print("Acknowledged receipt of work packet.")
 
-                    print(f"Received work packet with {len(work_packet)} pixels.")
-
-                    # Verarbeite jedes Pixel im Arbeitspaket
+                    # Process each pixel in the work packet
                     for x, y, color in work_packet:
                         if not set_pixel(x, y, color):
-                            print(f"Failed to set pixel at ({x}, {y}) with color {color}")
-                        time.sleep(delay)
+                            print(f"Skipping pixel at ({x}, {y}) due to repeated errors.")
+                        time.sleep(delay)  # Wait according to the current delay
 
-                    # Sende ACK-Nachricht an den Master
-                    s.sendall("acknowledge".encode("utf-8"))
-                    print("Work packet completed and acknowledged to master.")
+                    # Notify master that this packet is complete
+                    s.sendall("done".encode())
+                    print("Work packet completed and reported to master.")
 
             except ConnectionRefusedError:
                 print("Master not available, retrying in 5 seconds...")
