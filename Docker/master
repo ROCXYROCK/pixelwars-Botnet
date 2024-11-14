@@ -8,9 +8,10 @@ WORKDIR /app
 COPY src/master.py /app/src/master.py
 COPY cfg/config.toml /app/cfg/config.toml
 COPY pics /app/pics
+COPY data /app/data
 
 # Abhängigkeiten installieren
 RUN pip install requests pillow toml
 
 # Master-Server starten
-CMD ["python", "/src/master.py", "/app/pics/image1.png"]
+CMD ["python", "src/master.py", "/app/pics/image1.png"]

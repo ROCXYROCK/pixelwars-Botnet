@@ -85,7 +85,7 @@ progress = "/data/progress.json"                      # Fortschrittsdatei zur Wi
 2. **Master-Container** ausführen 🌐
 
 ```bash
-   docker run -d --name master master_image
+   docker run -d -p 5555:5555 --name master master_image
  ```
 
 ### Worker ausführen

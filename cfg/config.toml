@@ -12,4 +12,4 @@ PORT = 5555
 [Files]
 
 dir = "/pics"
-progress = "/data/progress.json"
+progress = "data/progress.json"
