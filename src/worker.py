@@ -45,7 +45,7 @@ def connect_to_master():
                     # Empfange Daten und verarbeite JSON mit Fehlerbehandlung
                     data = ""
                     while True:
-                        chunk = s.recv(1024).decode()
+                        chunk = s.recv(1024).decode("utf-8")
                         if not chunk:
                             break
                         data += chunk
@@ -71,7 +71,7 @@ def connect_to_master():
                         time.sleep(delay)
 
                     # Sende ACK-Nachricht an den Master
-                    s.sendall("acknowledge".encode())
+                    s.sendall("acknowledge".encode("utf-8"))
                     print("Work packet completed and acknowledged to master.")
 
             except ConnectionRefusedError:
