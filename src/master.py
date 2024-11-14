@@ -29,6 +29,17 @@ parser = argparse.ArgumentParser(description="Image processing master server.")
 parser.add_argument("image_path", type=str, help="Path to the image file to process.")
 args = parser.parse_args()
 
+# Validierungsfunktion für Farben im Hex-Format mit zufälliger Farbe bei ungültigen Werten
+def format_color(r, g, b):
+    """Format RGB values as a hex string in 'rrggbb' format or return a random color if invalid."""
+    if 0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255:
+        return f'{r:02x}{g:02x}{b:02x}'
+    else:
+        # Generiere eine zufällige Farbe im Hex-Format
+        random_color = f'{random.randint(0, 255):02x}{random.randint(0, 255):02x}{random.randint(0, 255):02x}'
+        print(f"Invalid color values detected: ({r}, {g}, {b}). Using random color '{random_color}'.")
+        return random_color
+
 # Lade das Bild und erstelle Arbeitspakete basierend auf festem PPS-Wert
 def load_image_to_work_queue(image_path):
     image = Image.open(image_path).convert('RGB')
@@ -43,12 +54,12 @@ def load_image_to_work_queue(image_path):
     packet_size = int(40 * PPS)
     print(f"Packet size calculated based on fixed PPS: {packet_size}")
 
-    # Erstelle Pixel-Daten mit angepassten Koordinaten
+    # Erstelle Pixel-Daten mit angepassten Koordinaten und validiertem Farbformat
     pixels = []
     for y in range(img_height):
         for x in range(img_width):
             r, g, b = image.getpixel((x, y))
-            color = f'{r:02x}{g:02x}{b:02x}'
+            color = format_color(r, g, b)
             pixels.append((start_x + x, start_y + y, color))
 
     # Teile Pixel in Pakete der Größe `packet_size`
