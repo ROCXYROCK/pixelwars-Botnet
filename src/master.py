@@ -60,7 +60,7 @@ def load_image_to_work_queue(image_path):
     ic(f"Packet size calculated based on fixed PPS: {packet_size}")
 
     # Progressive Rendering in mehreren Schritten
-    for step in range(3, 0, -1):  # Schrittweite reduzieren: 3, 2, 1
+    for step in range(5, 0, -1):  # Schrittweite reduzieren: 3, 2, 1
         pixels = []
         for y in range(0, img_height, step):  # Schrittweise Abstände
             for x in range(0, img_width, step):
@@ -111,7 +111,7 @@ def handle_worker(conn, addr):
         except Exception as e:
             ic(f"Error handling worker {addr}: {e}")
             work_queue.put(work_packet)  # Packet back to queue on exception
-            continue
+            break
 
     conn.close()
     ic(f"Worker {addr} disconnected")

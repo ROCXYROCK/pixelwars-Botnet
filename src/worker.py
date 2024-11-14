@@ -88,8 +88,10 @@ def connect_to_master():
                         break
 
                     try:
+                        print(f"data: {data}")
                         work_packet = json.loads(data)
                         print(f"Received work packet with {len(work_packet)} pixels.")
+                        print(work_packet)
                     except json.JSONDecodeError:
                         print("Received invalid JSON data, requesting packet again...")
                         continue  # Retry requesting packet
