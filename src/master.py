@@ -20,7 +20,7 @@ PROGRESS_FILE = config["Files"]["progress"]
 # Statische Werte für Canvas-Größe und PPS
 CANVAS_WIDTH = 1920
 CANVAS_HEIGHT = 1080
-PPS = 10
+PPS = 5
 
 # Queue für Arbeitspakete
 work_queue = Queue()
