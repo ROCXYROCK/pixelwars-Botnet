@@ -46,7 +46,7 @@ def generate_random_pixels(canvas_width, canvas_height, packet_size):
     pixels = []
     x, y = canvas_width // 2, canvas_height // 2  # Start in der Mitte des Canvas
     direction = 0  # 0: rechts, 1: runter, 2: links, 3: hoch
-    steps = 1      # Anzahl der Schritte pro Richtung
+    steps = 30      # Anzahl der Schritte pro Richtung
     step_change = 0  # Kontrolliert, wann die Schrittweite erhöht wird
 
     for _ in range(canvas_width * canvas_height):
