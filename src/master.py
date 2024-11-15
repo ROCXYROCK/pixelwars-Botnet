@@ -2,8 +2,6 @@ import socket
 import threading
 import json
 import random
-import os
-from PIL import Image
 from queue import Queue
 import toml
 import argparse
@@ -19,7 +17,6 @@ config = toml.load("cfg/config.toml")
 # Konfigurationseinstellungen aus der TOML-Datei
 SRC_HOST = "0.0.0.0"
 SRC_PORT = config["Src"]["PORT"]
-FILES_DIR = config["Files"]["dir"]
 
 # Statische Werte für Canvas-Größe und PPS
 CANVAS_WIDTH = 1920
@@ -30,50 +27,65 @@ PPS = 5
 work_queue = Queue()
 
 # Argumentparser für CLI-Eingaben
-parser = argparse.ArgumentParser(description="Image processing master server.")
-parser.add_argument("image_path", type=str, help="Path to the image file to process.")
+parser = argparse.ArgumentParser(description="Pixel pattern master server.")
+parser.add_argument("--image_path", type=str, default=None, help="Path to the image file to process (optional).")
+parser.add_argument("--pattern", type=str, default="random", help="Pixel pattern to generate (stripes, checkerboard, random).")
 args = parser.parse_args()
 
-# Validierungsfunktion für Farben im Hex-Format mit zufälliger Farbe bei ungültigen Werten
+# Validierungsfunktion für Farben im Hex-Format
 def format_color(r, g, b):
-    """Format RGB values as a hex string in 'rrggbb' format or return a random color if invalid."""
-    if 0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255:
-        return f'{r:02x}{g:02x}{b:02x}'
+    """Format RGB values as a hex string in 'rrggbb' format."""
+    return f'{r:02x}{g:02x}{b:02x}'
+
+# Generiere zufällige Pixel
+def generate_random_pixels(canvas_width, canvas_height, packet_size):
+    """Generates random pixel colors across the entire canvas."""
+    pixels = []
+    for _ in range(canvas_width):
+        for _ in range(canvas_height):
+            xx = random.randint(0, canvas_width - 1)
+            yy = random.randint(0, canvas_height - 1)
+            color = format_color(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+            pixels.append((xx, yy, color))
+
+    # Teile die Pixel in Pakete auf
+    work_packets = [pixels[i:i + packet_size] for i in range(0, len(pixels), packet_size)]
+    for packet in work_packets:
+        work_queue.put(packet)
+
+    ic(f"Generated {len(pixels)} random pixels into {work_queue.qsize()} packets.")
+
+# Generiere Pixelmuster und lade sie in die Work Queue
+def generate_pixel_pattern(pattern_type, canvas_width, canvas_height, packet_size, step=1):
+    """Generates pixel patterns and loads them into the work queue."""
+    pixels = []
+
+    if pattern_type == "stripes":
+        for x in range(0, canvas_width, step * 10):
+            for y in range(0, canvas_height, step):
+                color = format_color(255, 0, 0) if (x // 10) % 2 == 0 else format_color(0, 255, 0)  # Alternating red/green
+                pixels.append((x, y, color))
+
+    elif pattern_type == "checkerboard":
+        for y in range(0, canvas_height, step * 10):
+            for x in range(0, canvas_width, step * 10):
+                color = format_color(0, 0, 255) if (x // 10 + y // 10) % 2 == 0 else format_color(255, 255, 0)  # Blue/Yellow
+                pixels.append((x, y, color))
+
+    elif pattern_type == "random":
+        generate_random_pixels(canvas_width, canvas_height, packet_size)
+        return
+
     else:
-        # Generiere eine zufällige Farbe im Hex-Format
-        random_color = f'{random.randint(0, 255):02x}{random.randint(0, 255):02x}{random.randint(0, 255):02x}'
-        ic(f"Invalid color values detected: ({r}, {g}, {b}). Using random color '{random_color}'.")
-        return random_color
+        ic(f"Unknown pattern type: {pattern_type}")
+        return
 
-# Lade das Bild und erstelle Arbeitspakete für Progressive Rendering
-def load_image_to_work_queue(image_path):
-    image = Image.open(image_path).convert('RGB')
-    img_width, img_height = image.size
+    # Teile die Pixel in Pakete auf
+    work_packets = [pixels[i:i + packet_size] for i in range(0, len(pixels), packet_size)]
+    for packet in work_packets:
+        work_queue.put(packet)
 
-    # Berechne eine zufällige Startposition
-    start_x = random.randint(0, CANVAS_WIDTH - img_width)
-    start_y = random.randint(0, CANVAS_HEIGHT - img_height)
-    ic(f"Starting position on canvas: (x={start_x}, y={start_y})")
-
-    # Paketgröße berechnen basierend auf festem PPS-Wert
-    packet_size = int(40 * PPS)
-    ic(f"Packet size calculated based on fixed PPS: {packet_size}")
-
-    # Progressive Rendering in mehreren Schritten
-    for step in range(5, 0, -1):  # Schrittweite reduzieren: 3, 2, 1
-        pixels = []
-        for y in range(0, img_height, step):  # Schrittweise Abstände
-            for x in range(0, img_width, step):
-                r, g, b = image.getpixel((x, y))
-                color = format_color(r, g, b)
-                pixels.append((start_x + x, start_y + y, color))
-
-        # Teile Pixel in Pakete der Größe `packet_size`
-        work_packets = [pixels[i:i + packet_size] for i in range(0, len(pixels), packet_size)]
-        for packet in work_packets:
-            work_queue.put(packet)
-
-        ic(f"Loaded {len(pixels)} pixels into {work_queue.qsize()} work packets for step {step}.")
+    ic(f"Generated {len(pixels)} pixels into {work_queue.qsize()} packets for pattern {pattern_type}.")
 
 # Arbeiterverbindungen bearbeiten
 def handle_worker(conn, addr):
@@ -81,28 +93,23 @@ def handle_worker(conn, addr):
 
     while not work_queue.empty():
         try:
-            # Hole das nächste Arbeitspaket
             work_packet = work_queue.get_nowait()
-
-            # Sende das Arbeitspaket an den Worker
             conn.sendall(json.dumps(work_packet).encode())
             ic(f"Sent work packet to {addr}")
 
-            # Warte auf das 'ack' Signal vom Worker
             ack = conn.recv(1024).decode()
             if ack != "ack":
                 ic(f"Did not receive acknowledgment from {addr}, re-sending packet.")
-                work_queue.put(work_packet)  # Packet back to queue
+                work_queue.put(work_packet)
                 continue
 
-            # Warte auf die 'done' Nachricht des Workers
             response = conn.recv(1024).decode()
             if response == "done":
                 ic(f"Worker {addr} finished a packet.")
                 work_queue.task_done()
             else:
                 ic(f"Unexpected response from {addr}: {response}")
-                work_queue.put(work_packet)  # Packet back to queue if error occurs
+                work_queue.put(work_packet)
 
             if work_queue.empty():
                 ic(f"No more work packets for {addr}")
@@ -110,23 +117,29 @@ def handle_worker(conn, addr):
 
         except Exception as e:
             ic(f"Error handling worker {addr}: {e}")
-            work_queue.put(work_packet)  # Packet back to queue on exception
+            work_queue.put(work_packet)
             break
 
     conn.close()
     ic(f"Worker {addr} disconnected")
 
 # Starte den Master-Server
-def start_master(image_path):
-    # Initialisiere Arbeitspakete für das angegebene Bild
-    load_image_to_work_queue(image_path)
+def start_master():
+    packet_size = int(40 * PPS)
+
+    if args.image_path:
+        ic(f"Processing image: {args.image_path}")
+        # Hier könntest du eine Funktion aufrufen, die Bild-Pixel generiert und in die Queue einfügt
+        pass  # Placeholder für Bildverarbeitung
+    else:
+        ic("No image provided, generating random pixels.")
+        generate_pixel_pattern(args.pattern, CANVAS_WIDTH, CANVAS_HEIGHT, packet_size)
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((SRC_HOST, SRC_PORT))
     server.listen(5)
     ic(f"Master server listening on {SRC_HOST}:{SRC_PORT}")
 
-    # Akzeptiere Worker-Verbindungen
     while not work_queue.empty():
         conn, addr = server.accept()
         worker_thread = threading.Thread(target=handle_worker, args=(conn, addr))
@@ -135,5 +148,5 @@ def start_master(image_path):
     server.close()
     ic("All work packets processed.")
 
-# Starte den Master mit dem übergebenen Bildpfad
-start_master(args.image_path)
+# Starte den Master
+start_master()

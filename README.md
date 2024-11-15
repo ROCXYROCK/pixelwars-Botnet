@@ -25,13 +25,15 @@ Das **Pixelwar Botnet** basiert auf einer verteilten Master-Worker-Architektur:
 
 ## 📦 Arbeitspakete und API-Rate-Limitierung
 
+- **Pixelmuster**: Der Master kann verschiedene Muster generieren, die an die Worker verteilt werden:
+  - `stripes`: Vertikale Streifenmuster.
+  - `checkerboard`: Schachbrettmuster.
+  - `random`: Zufällige Pixel in verschiedenen Farben.
+
 - **Paketgröße**: Basierend auf dem API-Rate-Limit (PPS) wird die Paketgröße automatisch angepasst:
   ```plaintext
   Paketgröße = 40 * PPS 
   ```
-
-
-## 📦 Arbeitspakete und API-Rate-Limitierung
 
 - **Verzögerungsanpassung**: Worker holen sich das Pixels-per-Second-Limit (PPS) alle 10 Sekunden neu und passen die Wartezeit dynamisch an.
 
@@ -101,6 +103,16 @@ progress = "/data/progress.json"                      # Fortschrittsdatei zur Wi
  ```bash
    docker run -d --name worker1 worker_image
  ```
+---
+
+Hierbei kann die Option --pattern verwendet werden, um das Muster für die Pixel zu wählen:
+
+    stripes: Vertikale Streifenmuster.
+    checkerboard: Schachbrettmuster.
+    random: Zufällige Pixelmuster.
+
+Standardmäßig wird checkerboard verwendet, wenn keine Option angegeben wird
+
 ---
 
 ### ⚡ Ablauf im Detail
