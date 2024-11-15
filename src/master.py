@@ -37,42 +37,41 @@ def format_color(r, g, b):
     """Format RGB values as a hex string in 'rrggbb' format."""
     return f'{r:02x}{g:02x}{b:02x}'
 
-# Generiere zufällige Pixel
+
 def generate_random_pixels(canvas_width, canvas_height, packet_size):
-    
     """
-    Generates a traceable pattern across the canvas, such as a spiral or zig-zag path.
+    Generates a snake-like pattern starting from a random position on the canvas.
     """
     pixels = []
-    x, y = canvas_width // 2, canvas_height // 2  # Start in der Mitte des Canvas
-    direction = 0  # 0: rechts, 1: runter, 2: links, 3: hoch
-    steps = 30      # Anzahl der Schritte pro Richtung
-    step_change = 0  # Kontrolliert, wann die Schrittweite erhöht wird
+    # Zufälliger Startpunkt
+    x, y = random.randint(0, canvas_width - 1), random.randint(0, canvas_height - 1)
+    directions = [(1, 0), (0, 1), (-1, 0), (0, -1)]  # Rechts, Runter, Links, Hoch
+    direction_index = random.randint(0, 3)  # Zufällige Startbewegung
+    steps_in_current_direction = 10  # Start mit 10 Schritten in einer Richtung
+    step_counter = 0
+
+    color = format_color(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+
 
     for _ in range(canvas_width * canvas_height):
         # Füge den aktuellen Punkt hinzu
-        color = format_color(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
         pixels.append((x, y, color))
 
-        # Bewege in die aktuelle Richtung
-        if direction == 0:  # Rechts
-            x += 1
-        elif direction == 1:  # Runter
-            y += 1
-        elif direction == 2:  # Links
-            x -= 1
-        elif direction == 3:  # Hoch
-            y -= 1
+        # Bewege den Punkt in die aktuelle Richtung
+        dx, dy = directions[direction_index]
+        x, y = x + dx, y + dy
+        step_counter += 1
 
-        # Reduzierte Schritte für diese Richtung
-        steps -= 1
-        if steps == 0:  # Richtung wechseln, wenn Schritte aufgebraucht sind
-            direction = (direction + 1) % 4
-            step_change += 1
-            if step_change % 2 == 0:  # Schrittweite alle zwei Richtungswechsel erhöhen
-                steps = (step_change // 2) + 1
-            else:
-                steps = step_change // 2
+        # Prüfe, ob eine Richtungsänderung notwendig ist
+        if step_counter >= steps_in_current_direction or not (0 <= x < canvas_width and 0 <= y < canvas_height):
+            # Richtung ändern (im Uhrzeigersinn)
+            direction_index = (direction_index + 1) % 4
+            dx, dy = directions[direction_index]
+            x, y = x + dx, y + dy  # Bewegung anpassen
+            step_counter = 0  # Zähler zurücksetzen
+
+            # Schritte in der neuen Richtung zufällig variieren
+            steps_in_current_direction = random.randint(5, 20)
 
         # Begrenze die Position innerhalb des Canvas
         x = max(0, min(canvas_width - 1, x))
@@ -83,7 +82,7 @@ def generate_random_pixels(canvas_width, canvas_height, packet_size):
     for packet in work_packets:
         work_queue.put(packet)
 
-    ic(f"Generated {len(pixels)} traceable pattern pixels into {work_queue.qsize()} packets.")
+    print(f"Generated {len(pixels)} snake-like pixels into {work_queue.qsize()} packets.")
 
 
 # Generiere Pixelmuster und lade sie in die Work Queue
