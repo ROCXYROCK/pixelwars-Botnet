@@ -39,21 +39,52 @@ def format_color(r, g, b):
 
 # Generiere zufällige Pixel
 def generate_random_pixels(canvas_width, canvas_height, packet_size):
-    """Generates random pixel colors across the entire canvas."""
+    
+    """
+    Generates a traceable pattern across the canvas, such as a spiral or zig-zag path.
+    """
     pixels = []
-    for _ in range(canvas_width):
-        for _ in range(canvas_height):
-            xx = random.randint(0, canvas_width - 1)
-            yy = random.randint(0, canvas_height - 1)
-            color = format_color(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-            pixels.append((xx, yy, color))
+    x, y = canvas_width // 2, canvas_height // 2  # Start in der Mitte des Canvas
+    direction = 0  # 0: rechts, 1: runter, 2: links, 3: hoch
+    steps = 1      # Anzahl der Schritte pro Richtung
+    step_change = 0  # Kontrolliert, wann die Schrittweite erhöht wird
+
+    for _ in range(canvas_width * canvas_height):
+        # Füge den aktuellen Punkt hinzu
+        color = format_color(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+        pixels.append((x, y, color))
+
+        # Bewege in die aktuelle Richtung
+        if direction == 0:  # Rechts
+            x += 1
+        elif direction == 1:  # Runter
+            y += 1
+        elif direction == 2:  # Links
+            x -= 1
+        elif direction == 3:  # Hoch
+            y -= 1
+
+        # Reduzierte Schritte für diese Richtung
+        steps -= 1
+        if steps == 0:  # Richtung wechseln, wenn Schritte aufgebraucht sind
+            direction = (direction + 1) % 4
+            step_change += 1
+            if step_change % 2 == 0:  # Schrittweite alle zwei Richtungswechsel erhöhen
+                steps = (step_change // 2) + 1
+            else:
+                steps = step_change // 2
+
+        # Begrenze die Position innerhalb des Canvas
+        x = max(0, min(canvas_width - 1, x))
+        y = max(0, min(canvas_height - 1, y))
 
     # Teile die Pixel in Pakete auf
     work_packets = [pixels[i:i + packet_size] for i in range(0, len(pixels), packet_size)]
     for packet in work_packets:
         work_queue.put(packet)
 
-    ic(f"Generated {len(pixels)} random pixels into {work_queue.qsize()} packets.")
+    ic(f"Generated {len(pixels)} traceable pattern pixels into {work_queue.qsize()} packets.")
+
 
 # Generiere Pixelmuster und lade sie in die Work Queue
 def generate_pixel_pattern(pattern_type, canvas_width, canvas_height, packet_size, step=1):
