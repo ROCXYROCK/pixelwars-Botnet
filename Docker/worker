@@ -8,8 +8,9 @@ WORKDIR /app
 COPY src/worker.py /app/src/worker.py
 COPY cfg/config.toml /app/cfg/config.toml
 
+
 # Abhängigkeiten installieren
 RUN pip install requests toml
 
 # Master-Server starten
-CMD ["python", "/src/worker.py"]
+CMD ["python", "src/worker.py"]

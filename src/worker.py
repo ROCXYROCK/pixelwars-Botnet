@@ -53,19 +53,25 @@ def get_pps():
         return 1
 
 # Connect to the Master and request work packets
+# Connect to the Master and request work packets
+# Custom exception to break out of all loops
+class ReconnectException(Exception):
+    pass
+
+# Connect to the Master and request work packets
 def connect_to_master():
     # Initial PPS and delay
     pps = get_pps()
     delay = 1 / pps if pps > 0 else 1
     last_check = time.time()
 
-    while True:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
+    while True:  # Outer loop for reconnecting
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.connect((args.master_host, args.master_port))
                 print("Connected to master, requesting work...")
 
-                while True:
+                while True:  # Middle loop for receiving data packets
                     # Check every 10 seconds to update PPS and delay
                     if time.time() - last_check >= 10:
                         pps = get_pps()
@@ -75,7 +81,7 @@ def connect_to_master():
 
                     # Receive data in chunks and assemble it
                     data = ""
-                    while True:
+                    while True:  # Inner loop for assembling the data
                         chunk = s.recv(1024).decode()
                         if not chunk:
                             break
@@ -85,17 +91,17 @@ def connect_to_master():
 
                     if not data:
                         print("No data received, disconnecting...")
-                        break
+                        raise ReconnectException  # Force reconnect
 
                     try:
-                        print(f"data: {data}")
+                        print(f"Data: {data}")
                         work_packet = json.loads(data)
                         print(f"Received work packet with {len(work_packet)} pixels.")
                         print(work_packet)
                     except json.JSONDecodeError:
-                        print("Received invalid JSON data, requesting packet again...")
-                        continue  # Retry requesting packet
-                    
+                        print("Received invalid JSON data. Disconnecting and reconnecting...")
+                        raise ReconnectException  # Force reconnect
+
                     # Send acknowledgment for received packet
                     s.sendall("ack".encode())
                     print("Acknowledged receipt of work packet.")
@@ -110,9 +116,17 @@ def connect_to_master():
                     s.sendall("done".encode())
                     print("Work packet completed and reported to master.")
 
-            except ConnectionRefusedError:
-                print("Master not available, retrying in 5 seconds...")
-                time.sleep(5)
+        except ReconnectException:
+            print("Reconnecting to master due to an error...")
+            time.sleep(5)
+        except ConnectionRefusedError:
+            print("Master not available, retrying in 5 seconds...")
+            time.sleep(5)
+        except Exception as e:
+            print(f"Unexpected error: {e}. Reconnecting in 5 seconds...")
+            time.sleep(5)
+
+
 
 # Run the worker
 connect_to_master()
